@@ -2,24 +2,24 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// ================= 🔧 核心调优区 =================
+// ================= Core Tuning Section =================
 
 const INITIAL_OFFSET = 0; 
 const BEND_DIRECTION = -1; 
 const ROTATION_AXIS = 'x';
 const TARGET_OFFSET_DIST = 0.15; 
 
-// 5. 物理限制 (弧度) - 参数微调版
+// 5. Physical limits (radians) - fine-tuned
 const LIMITS = {
-    // 向后掰
-    SOFT_EXTENSION: -0.3,       // 阻力点 (轻微后弯)
-    CRACK_EXT_THRESHOLD: -0.5,  // ★ 声音触发点 (介于软硬之间)
-    HARD_EXTENSION: -0.8,       // ★ 硬极限 (掰响后最多弯到这，防止太恐怖)
+    // Bend backward
+    SOFT_EXTENSION: -0.3,       // Resistance point (slight hyperextension)
+    CRACK_EXT_THRESHOLD: -0.5,  // ★ Sound trigger point (between soft/hard)
+    HARD_EXTENSION: -0.8,       // ★ Hard limit (max after crack to avoid extreme bend)
 
-    // 向前握拳
+    // Curl forward
     SOFT_CURL: 1.3,
     CRACK_CURL_THRESHOLD: 1.45,
-    HARD_CURL: 1.5              // ★ 握拳极限 (防止穿模插进手掌)
+    HARD_CURL: 1.5              // ★ Fist limit (avoid clipping into palm)
 };
 
 const RESTORE_SPEED = 0.2;
@@ -30,7 +30,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x333333);
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 2, 4);
+camera.position.set(1, 2, 5);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -57,20 +57,20 @@ const fingersConfig = [
     { name: 'Thumb', bones: ['Thumb_1', 'Thumb_2', 'Thumb_3'] }
 ];
 
-// --- 音频系统 ---
+// --- Audio system ---
 const listener = new THREE.AudioListener();
 camera.add(listener);
 const crackSound = new THREE.Audio(listener);
 const audioLoader = new THREE.AudioLoader();
 const crackBuffers = [];
 
-// 加载音频并打印日志
+// Load audio and log
 ['assets/crack_1.mp3', 'assets/crack_2.mp3', 'assets/crack_3.mp3', 'assets/crack_4.mp3'].forEach(file => {
     audioLoader.load(file, (buffer) => {
         crackBuffers.push(buffer);
-        console.log(`✅ 音频加载成功: ${file}`);
+        console.log(`✅ Audio loaded: ${file}`);
     }, undefined, (err) => {
-        console.error(`❌ 音频加载失败: ${file}`, err);
+        console.error(`❌ Audio failed: ${file}`, err);
     });
 });
 
@@ -78,8 +78,8 @@ const loader = new GLTFLoader();
 loader.load('assets/Hand.glb', function (gltf) {
     handModel = gltf.scene;
     scene.add(handModel);
-    handModel.position.y = 0;
-    handModel.rotation.y = -Math.PI / 12;
+    handModel.position.y = -1.5;
+    handModel.rotation.y = -Math.PI / 1.7;
 
     handModel.traverse((o) => {
         if (o.isMesh) {
@@ -158,14 +158,14 @@ function solveIK() {
         const { bones, effector, target } = chain;
         const targetPos = target.position;
 
-        // 迭代 10 次保证精度
+        // Iterate 10 times for accuracy
         for (let i = 0; i < 10; i++) {
             for (let j = bones.length - 2; j >= 0; j--) {
                 const bone = bones[j];
-                // 权重：指尖(j=1)灵活，根部(j=0)迟钝
+                // Weight: fingertip (j=1) agile, base (j=0) sluggish
                 let weight = (j === 0) ? 0.3 : 1.2; 
 
-                // --- 1. 计算向量 ---
+                // --- 1. Compute vectors ---
                 const effectorPos = new THREE.Vector3();
                 effector.getWorldPosition(effectorPos);
                 const bonePos = new THREE.Vector3();
@@ -178,67 +178,67 @@ function solveIK() {
                 const localToTarget = toTarget.clone().applyQuaternion(boneInverseQ);
                 const localToEffector = toEffector.clone().applyQuaternion(boneInverseQ);
 
-                // --- 2. 计算原始意图 (Raw Intent) ---
+                // --- 2. Calculate raw intent ---
                 const angleCurrent = Math.atan2(localToEffector.y, localToEffector.z);
                 const angleTarget = Math.atan2(localToTarget.y, localToTarget.z);
                 
-                // 这是鼠标真正想让骨头转的角度，可能非常大
+                // This is the actual angle the mouse wants, possibly large
                 let rawDiff = (angleTarget - angleCurrent) * BEND_DIRECTION;
 
                 if (Math.abs(rawDiff) < 0.0001) continue;
 
-                // --- 3. ★ 声音触发 (基于意图) ★ ---
-                // 我们计算如果"不限制速度"，骨头会去哪里。用这个值来判断是否响。
-                // 这样即使骨头被物理限制卡住了，只要你鼠标拉得远，照样响。
+                // --- 3. ★ Sound trigger (based on intent) ★ ---
+                // Compute where the bone would go with no speed cap and use it to trigger sound.
+                // Even if physically clamped, dragging far still triggers.
                 let virtualAngle = bone.rotation[ROTATION_AXIS] + (rawDiff * weight);
                 let virtualRelative = virtualAngle - INITIAL_OFFSET;
 
                 if (!chain.isCracked) {
-                    // 向后掰检测
+                    // Backward bend check
                     if (virtualRelative < LIMITS.CRACK_EXT_THRESHOLD && rawDiff < 0) {
                         triggerCrack(chain);
                     }
-                    // 向前握拳检测
+                    // Forward curl check
                     if (virtualRelative > LIMITS.CRACK_CURL_THRESHOLD && rawDiff > 0) {
                         triggerCrack(chain);
                     }
                 }
 
-                // --- 4. ★ 物理运动 (强力限制) ★ ---
+                // --- 4. ★ Physical motion (hard limits) ★ ---
                 
-                // (A) 步长钳制：防止鬼畜
-                // 每一帧，骨头最多转 0.06 弧度。
-                // 无论鼠标甩多快，骨头只能慢慢跟过去，这就消除了鬼畜和变长。
+                // (A) Step clamp: prevent jitter
+                // Each frame the bone turns at most 0.06 rad.
+                // No matter how fast the mouse moves, the bone follows slowly to avoid jitter/stretch.
                 let clampedDiff = rawDiff;
                 if (clampedDiff > 0.1) clampedDiff = 0.1;
                 if (clampedDiff < -0.1) clampedDiff = -0.1;
                 
-                // 应用权重
+                // Apply weight
                 let newAngle = bone.rotation[ROTATION_AXIS] + (clampedDiff * weight);
                 let relativeAngle = newAngle - INITIAL_OFFSET;
 
-                // (B) 极限限制：防止穿模和后弯太大
-                let currentExtLimit = LIMITS.SOFT_EXTENSION; // 默认卡在软极限
+                // (B) Hard limits: avoid clipping and overextension
+                let currentExtLimit = LIMITS.SOFT_EXTENSION; // Default clamp at soft limit
                 let currentCurlLimit = LIMITS.SOFT_CURL;
 
                 if (chain.isCracked) {
-                    // 响过之后，允许去硬极限
+                    // After cracking, allow hard limits
                     currentExtLimit = LIMITS.HARD_EXTENSION;
                     currentCurlLimit = LIMITS.HARD_CURL;
                 }
 
-                // 强制卡在极限内
+                // Force clamp to limits
                 if (relativeAngle < currentExtLimit) newAngle = INITIAL_OFFSET + currentExtLimit;
                 if (relativeAngle > currentCurlLimit) newAngle = INITIAL_OFFSET + currentCurlLimit;
 
-                // --- 5. 复位检测 ---
-                // 只有完全回到安全区，才允许下一次响
+                // --- 5. Reset detection ---
+                // Allow next crack only after returning to safe zone
                 if (relativeAngle > LIMITS.SOFT_EXTENSION + 0.2 && 
                     relativeAngle < LIMITS.SOFT_CURL - 0.2) {
                     chain.isCracked = false;
                 }
 
-                // 应用最终计算出的安全角度
+                // Apply final safe angle
                 bone.rotation[ROTATION_AXIS] = newAngle;
                 bone.updateMatrixWorld(true);
             }
@@ -248,14 +248,14 @@ function solveIK() {
 
 function triggerCrack(chain) {
     const now = Date.now();
-    // ★ 核心修复：冷却时间设为 1000ms，彻底杜绝连发
+    // ★ Core fix: cooldown set to 1000ms to prevent rapid fire
     if (now - chain.lastCrackTime < 1000) return;
     chain.lastCrackTime = now;
 
-    // 播放声音
+    // Play sound
     if (crackBuffers.length > 0) {
         const idx = Math.floor(Math.random() * crackBuffers.length);
-        if (crackSound.isPlaying) crackSound.stop(); // 打断上一次
+        if (crackSound.isPlaying) crackSound.stop(); // Interrupt previous
         crackSound.setBuffer(crackBuffers[idx]);
         crackSound.setVolume(1.0);
         crackSound.play();
@@ -265,15 +265,15 @@ function triggerCrack(chain) {
     }
     chain.isCracked = true;
 
-    // 视觉微抖动
+    // Visual micro jitter
     const rootBone = chain.bones[0];
     const originalY = rootBone.position.y;
-    rootBone.position.y += 0.003;
+    rootBone.position.y += 0.05;
     setTimeout(() => { rootBone.position.y = originalY; }, 80);
 }
 
 
-// --- 交互系统 ---
+// --- Interaction system ---
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const dragPlane = new THREE.Plane(); 
@@ -283,7 +283,7 @@ let isDragging = false;
 window.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     
-    // ★ 唤醒 AudioContext (重要)
+    // ★ Wake AudioContext (important)
     if (listener.context.state === 'suspended') {
         listener.context.resume().then(() => {
             console.log("🔊 AudioContext Resumed");
