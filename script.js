@@ -7,6 +7,9 @@ const contextUI = document.getElementById('context-ui');
 const currentModeEl = document.getElementById('current-mode');
 const modeHintEl = document.getElementById('mode-hint');
 const backBtn = document.getElementById('back-btn');
+const popLayer = document.getElementById('pop-layer');
+const overviewHintEl = document.getElementById('overview-hint');
+const detailHintEl = document.getElementById('detail-hint');
 
 const MODE_HINTS = {
   hand:  'Gently drag a fingertip to simulate joint cracking.',
@@ -14,6 +17,7 @@ const MODE_HINTS = {
   waist: 'Drag sideways to twist the waist.'
 };
 
+const POP_WORDS = ['POP', 'CRACK', 'SNAP'];
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2b2b2b);
@@ -326,6 +330,8 @@ function enterOverview() {
   controlTargets.forEach(t => (t.visible = false));
 
   contextUI.hidden = true;
+  if (overviewHintEl) overviewHintEl.hidden = false;
+  if (detailHintEl) detailHintEl.hidden = true;
 
   applyCameraPreset('overview');
 }
@@ -345,6 +351,8 @@ function enterDetail(mode) {
   contextUI.hidden = false;
   currentModeEl.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
   modeHintEl.textContent = MODE_HINTS[mode] || '';
+  if (overviewHintEl) overviewHintEl.hidden = true;
+  if (detailHintEl) detailHintEl.hidden = false;
 }
 
 
@@ -354,7 +362,7 @@ function enterDetail(mode) {
 
 function createTarget(name, kind) {
 
-  const radius = (kind === 'selector') ? 0.18 : 0.07;
+  const radius = (kind === 'selector') ? 0.1 : 0.07;
   // selector 大，control 小
 
   const geo = new THREE.SphereGeometry(radius, 16, 16);
@@ -442,6 +450,10 @@ function solveChains() {
 else {
   if (c.state !== 'snapped') {
     triggerCrackSound();
+
+    const jointPos = new THREE.Vector3();
+    c.bones[c.bones.length - 1].getWorldPosition(jointPos);
+    showPopEffect(jointPos, 'snap');
   }
 
   c.state = 'snapped';
@@ -508,6 +520,10 @@ else if (Math.abs(input) < c.limits.CRACK) {
 else {
   if (c.state !== 'snapped') {
     triggerCrackSound();
+
+    const jointPos = new THREE.Vector3();
+    bone.getWorldPosition(jointPos);
+    showPopEffect(jointPos, c.type);
   }
 
   c.state = 'snapped';
@@ -647,6 +663,43 @@ function setMouse(e) {
   mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
 }
 
+// ===================== POP EFFECT =====================
+
+function showPopEffect(worldPosition, type) {
+  if (!popLayer || !worldPosition) return;
+
+  const p = worldPosition.clone().project(camera);
+  if (p.z > 1) return; // behind camera
+
+  const x = (p.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
+  const y = (-p.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
+
+  const wordPool = POP_WORDS.slice();
+  if (type && POP_WORDS.includes(type.toUpperCase())) {
+    wordPool.push(type.toUpperCase()); // bias toward provided type but keep randomness
+  }
+  const word = wordPool[Math.floor(Math.random() * wordPool.length)];
+
+  const el = document.createElement('div');
+  el.className = 'pop-effect';
+  el.textContent = word;
+
+  const hue = 90 + Math.random() * 40; // yellow-green to bright green
+  const color = `hsl(${Math.floor(hue)}, 95%, 65%)`;
+  const size = 22 + Math.random() * 10; // px
+  const dur = 0.3 + Math.random() * 0.2; // 300–500ms
+
+  el.style.color = color;
+  el.style.fontSize = `${size}px`;
+  el.style.left = `${x}px`;
+  const yOffset = type === 'waist' ? 200 : -16; // waist pops sit noticeably lower
+  el.style.top = `${y + yOffset}px`;
+  el.style.animation = `pop-burst ${dur}s ease-out forwards`;
+
+  popLayer.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
 // ===================== LOOP =====================
 
 function animate() {
@@ -735,4 +788,3 @@ window.addEventListener('keydown', (e) => {
 backBtn.addEventListener('click', () => {
   enterOverview();
 });
-

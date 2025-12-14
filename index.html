@@ -17,9 +17,8 @@
 <body>
     <div id="ui-overlay">
   <div class="ui-top-left">
-    <h1>Finger Crack Simulator</h1>
+    <img src="assets/body-crack-simulator.png" alt="Body Crack Simulator" class="ui-logo">
     <p class="author">Kia Bai · ITP NYU · ICM 2025</p>
-    <p class="hint">🟢 Drag the green spheres to pose</p>
   </div>
 
   <div class="ui-top-right" id="context-ui" hidden>
@@ -27,7 +26,11 @@
     <p class="hint-small" id="mode-hint"></p>
     <button id="back-btn">← Back</button>
   </div>
+
+  <div id="overview-hint" class="global-hint">1. Click 🟢 to select</div>
+  <div id="detail-hint" class="global-hint" hidden>2. Drag 🟢 to crack</div>
 </div>
+    <div id="pop-layer"></div>
     <script type="module" src="script.js"></script>
 </body>
 </html>

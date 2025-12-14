@@ -23,6 +23,62 @@ canvas {
   z-index: 10;
 }
 
+.global-hint {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #eafff0;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  letter-spacing: 0.5px;
+  text-align: center;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+#pop-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none; /* 不挡鼠标 */
+  z-index: 15; /* 高于 three.js 画面 */
+  overflow: visible;
+  font-family: "Impact", "Anton", "Archivo Black", system-ui, sans-serif;
+}
+
+.pop-effect {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%) scale(0.6);
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  text-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 0 8px rgba(120, 255, 120, 0.8),
+    0 0 16px rgba(170, 255, 140, 0.7);
+  opacity: 0;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+@keyframes pop-burst {
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 0.95;
+  }
+  60% {
+    transform: translate(-50%, -65%) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -80%) scale(1.6);
+    opacity: 0;
+  }
+}
+
 /* 左上角信息 */
 .ui-top-left {
   position: absolute;
@@ -40,6 +96,16 @@ canvas {
   font-size: 1.4rem;
   font-weight: 600;
   color: #fff;
+}
+
+.ui-logo {
+  display: block;
+  width: 260px;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  margin: 0 0 10px;
 }
 
 .ui-top-left .author {
@@ -82,16 +148,20 @@ canvas {
 }
 
 #back-btn {
-  background: none;
-  border: 1px solid #aaa;
-  color: #fff;
-  padding: 6px 12px;
+  background: linear-gradient(135deg, #2cd86f, #18b454);
+  border: 1px solid #1c8f48;
+  color: #0b2d15;
+  padding: 10px 18px;
   border-radius: 999px;
   cursor: pointer;
+  font-weight: 700;
+  font-size: 0.95rem;
+  box-shadow: 0 6px 18px rgba(24, 180, 84, 0.35);
 }
 
 #back-btn:hover {
-  background: rgba(255,255,255,0.1);
+  background: linear-gradient(135deg, #34e27a, #1fc160);
+  box-shadow: 0 8px 22px rgba(31, 193, 96, 0.45);
 }
 
 .hint-small {
