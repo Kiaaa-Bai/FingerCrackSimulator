@@ -7,7 +7,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2b2b2b);
 
 const camera = new THREE.PerspectiveCamera(
-  10,
+  60,
   window.innerWidth / window.innerHeight,
   0.1,
   100
@@ -54,6 +54,14 @@ const mouse = new THREE.Vector2();
 const dragPlane = new THREE.Plane();
 let selectedTarget = null;
 let dragging = false;
+
+let camTransition = null;
+// {
+//   fromPos, toPos,
+//   fromRot, toRot,
+//   t, dur
+// }
+
 // ===== View State =====
 let viewState = 'overview'; // 'overview' | 'hand' | 'neck' | 'waist'
 
@@ -61,31 +69,45 @@ let viewState = 'overview'; // 'overview' | 'hand' | 'neck' | 'waist'
 const selectorTargets = []; // 3 balls in overview (click only)
 const controlTargets = [];  // balls in detail (drag only)
 
-// camera animation
-let camAnim = null; // { fromPos, toPos, fromLook, toLook, t, dur }
-
 const CAMERA_PRESETS = {
   overview: {
-    pos:  new THREE.Vector3(0, 1.2, 12),
-    look: new THREE.Vector3(0, 1.0, 0)
+    pos: new THREE.Vector3(0.100, 0.942, 1.896),
+    rot: new THREE.Euler(-0.105, 0.000, 0.000)
   },
 
   hand: {
-    // 🔴 你之后只调这 6 个数字
-    pos:  new THREE.Vector3(-1, 2, 0.5),
-    look: new THREE.Vector3(0, 0, 1)
+    pos: new THREE.Vector3(-0.763, 1.289, 0.130),
+    rot: new THREE.Euler(0.616, 0.135, 0.000)
   },
 
   neck: {
-    pos:  new THREE.Vector3(0, 1.9, 2.0),
-    look: new THREE.Vector3(0, 1.7, 0)
+    pos: new THREE.Vector3(-0.031, 1.590, 0.400),
+    rot: new THREE.Euler(-0.089, -0.030, 0.000)
   },
 
   waist: {
-    pos:  new THREE.Vector3(0, 1.2, 2.4),
-    look: new THREE.Vector3(0, 1.0, 0)
+    pos: new THREE.Vector3(-0.031, 1.090, 0.400),
+    rot: new THREE.Euler(-0.089, -0.030, 0.000)
   }
 };
+
+function applyCameraPreset(mode, duration = 0.4) {
+  const preset = CAMERA_PRESETS[mode];
+  if (!preset) return;
+
+  camTransition = {
+    fromPos: camera.position.clone(),
+    toPos: preset.pos.clone(),
+
+    fromRot: camera.rotation.clone(),
+    toRot: preset.rot.clone(),
+
+    t: 0,
+    dur: duration
+  };
+}
+
+
 
 
 
@@ -274,35 +296,24 @@ function initSelectors() {
 function enterOverview() {
   viewState = 'overview';
 
-  // show only selectors
   selectorTargets.forEach(t => (t.visible = true));
   controlTargets.forEach(t => (t.visible = false));
 
-  // reset camera
-  animateCamera(
-  CAMERA_PRESETS.overview.pos,
-  CAMERA_PRESETS.overview.look,
-  0.7
-);
-
+  applyCameraPreset('overview');
 }
 
 function enterDetail(mode) {
   viewState = mode;
 
-  // hide selectors
   selectorTargets.forEach(t => (t.visible = false));
 
-  // show only relevant control targets
   controlTargets.forEach(t => {
     t.visible = (t.userData.mode === mode);
   });
 
-  const preset = CAMERA_PRESETS[mode];
-  if (preset) {
-    animateCamera(preset.pos, preset.look, 0.6);
-  }
+  applyCameraPreset(mode);
 }
+
 
 
 
@@ -455,16 +466,16 @@ window.addEventListener('pointerdown', e => {
 });
 
 
-function animateCamera(toPos, toLookAt, duration = 0.6) {
-  camAnim = {
-    fromPos: camera.position.clone(),
-    toPos: toPos.clone(),
-    fromLook: getCameraLookAt(),
-    toLook: toLookAt.clone(),
-    t: 0,
-    dur: duration
-  };
-}
+// function animateCamera(toPos, toLookAt, duration = 0.6) {
+//   camAnim = {
+//     fromPos: camera.position.clone(),
+//     toPos: toPos.clone(),
+//     fromLook: getCameraLookAt(),
+//     toLook: toLookAt.clone(),
+//     t: 0,
+//     dur: duration
+//   };
+// }
 
 function getCameraLookAt() {
   const dir = new THREE.Vector3();
@@ -530,19 +541,6 @@ function animate() {
 
 
   solveChains();
-  // camera tween
-if (camAnim) {
-  camAnim.t += 1 / 60;
-  const a = Math.min(camAnim.t / camAnim.dur, 1);
-  const k = a * a * (3 - 2 * a); // smoothstep
-
-  camera.position.lerpVectors(camAnim.fromPos, camAnim.toPos, k);
-
-  const look = new THREE.Vector3().lerpVectors(camAnim.fromLook, camAnim.toLook, k);
-  camera.lookAt(look);
-
-  if (a >= 1) camAnim = null;
-}
 
 // === keep control targets visually small ===
 controlTargets.forEach(t => {
@@ -555,6 +553,29 @@ controlTargets.forEach(t => {
 
   t.scale.setScalar(s);
 });
+
+if (camTransition) {
+  camTransition.t += 1 / 60;
+  const a = Math.min(camTransition.t / camTransition.dur, 1);
+
+  // smoothstep（非常重要，比 linear 好很多）
+  const k = a * a * (3 - 2 * a);
+
+  camera.position.lerpVectors(
+    camTransition.fromPos,
+    camTransition.toPos,
+    k
+  );
+
+  camera.rotation.set(
+    THREE.MathUtils.lerp(camTransition.fromRot.x, camTransition.toRot.x, k),
+    THREE.MathUtils.lerp(camTransition.fromRot.y, camTransition.toRot.y, k),
+    THREE.MathUtils.lerp(camTransition.fromRot.z, camTransition.toRot.z, k)
+  );
+
+  if (a >= 1) camTransition = null;
+}
+
 
   renderer.render(scene, camera);
 }
