@@ -15,11 +15,19 @@
     </script>
 </head>
 <body>
-    <div id="ui-container">
-        <h1>Finger Crack Simulator</h1>
-        <p>Kia Bai, ITP NYU, ICM, 2025</p>
-        <p>🖱️ Drag the green spheres to pose</p>
-    </div>
+    <div id="ui-overlay">
+  <div class="ui-top-left">
+    <h1>Finger Crack Simulator</h1>
+    <p class="author">Kia Bai · ITP NYU · ICM 2025</p>
+    <p class="hint">🟢 Drag the green spheres to pose</p>
+  </div>
+
+  <div class="ui-top-right" id="context-ui" hidden>
+    <p class="mode-label">Now cracking: <span id="current-mode">Hand</span></p>
+    <p class="hint-small" id="mode-hint"></p>
+    <button id="back-btn">← Back</button>
+  </div>
+</div>
     <script type="module" src="script.js"></script>
 </body>
 </html>

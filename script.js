@@ -3,6 +3,18 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ===================== BASIC SETUP =====================
 
+const contextUI = document.getElementById('context-ui');
+const currentModeEl = document.getElementById('current-mode');
+const modeHintEl = document.getElementById('mode-hint');
+const backBtn = document.getElementById('back-btn');
+
+const MODE_HINTS = {
+  hand:  'Gently drag a fingertip to simulate joint cracking.',
+  neck:  'Drag sideways to bend the neck.',
+  waist: 'Drag sideways to twist the waist.'
+};
+
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2b2b2b);
 
@@ -43,6 +55,8 @@ const crackBuffers = [];
 
 // ===================== GLOBAL STATE =====================
 
+let activeChain = null;
+
 let model = null;
 const boneMap = {};
 const chains = [];
@@ -54,6 +68,12 @@ const mouse = new THREE.Vector2();
 const dragPlane = new THREE.Plane();
 let selectedTarget = null;
 let dragging = false;
+
+// ===== Drag Accumulator (screen-space) =====
+let dragStartY = 0;
+let dragStartX = 0;
+let dragAccumX = 0;
+let dragAccumY = 0;
 
 let camTransition = null;
 // {
@@ -71,12 +91,12 @@ const controlTargets = [];  // balls in detail (drag only)
 
 const CAMERA_PRESETS = {
   overview: {
-    pos: new THREE.Vector3(0.100, 0.942, 1.896),
+    pos: new THREE.Vector3(0.100, 1.2, 1.896),
     rot: new THREE.Euler(-0.105, 0.000, 0.000)
   },
 
   hand: {
-    pos: new THREE.Vector3(-0.763, 1.289, 0.130),
+    pos: new THREE.Vector3(-0.763, 1.289, 0.20),
     rot: new THREE.Euler(0.616, 0.135, 0.000)
   },
 
@@ -86,7 +106,7 @@ const CAMERA_PRESETS = {
   },
 
   waist: {
-    pos: new THREE.Vector3(-0.031, 1.090, 0.400),
+    pos: new THREE.Vector3(-0.031, 1.5, 1),
     rot: new THREE.Euler(-0.089, -0.030, 0.000)
   }
 };
@@ -182,6 +202,7 @@ function initFingers() {
 ];
 
 
+
   fingerDefs.forEach(([name, bones]) => {
 
     const chainBones = bones
@@ -190,6 +211,9 @@ function initFingers() {
 
 
     if (!chainBones.length) return;
+
+    const axis = (name === 'Thumb') ? 'z' : 'x';
+
 
     const tip = chainBones[chainBones.length - 1];
     const target = createTarget(name, 'control');
@@ -210,11 +234,13 @@ function initFingers() {
     chains.push({
       type: 'finger',
       bones: chainBones,
-      axis: 'x',
+      axis: axis,
       limits: LIMIT_PRESETS.finger,
       target,
       cracked: false,
-      lastCrack: 0
+      lastCrack: 0,
+      state: 'soft',      // 'soft' | 'hard' | 'snapped'
+      prevAngle: 0
     });
 
     controlTargets.push(target);
@@ -248,7 +274,7 @@ function initSpine() {
     target.userData.mode = name.toLowerCase(); // 'neck' or 'waist'
 
     bone.getWorldPosition(target.position);
-    target.position.y += 0.25;
+    target.position.y -= 0;
 
     originalPositions[name] = target.position.clone();
 
@@ -259,7 +285,9 @@ function initSpine() {
       limits,
       target,
       cracked: false,
-      lastCrack: 0
+      lastCrack: 0,
+      state: 'soft',      // 'soft' | 'hard' | 'snapped'
+      prevAngle: 0
     });
 
     controlTargets.push(target);
@@ -299,6 +327,8 @@ function enterOverview() {
   selectorTargets.forEach(t => (t.visible = true));
   controlTargets.forEach(t => (t.visible = false));
 
+  contextUI.hidden = true;
+
   applyCameraPreset('overview');
 }
 
@@ -312,6 +342,11 @@ function enterDetail(mode) {
   });
 
   applyCameraPreset(mode);
+
+   // === UI ===
+  contextUI.hidden = false;
+  currentModeEl.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+  modeHintEl.textContent = MODE_HINTS[mode] || '';
 }
 
 
@@ -345,24 +380,43 @@ function createTarget(name, kind) {
 // ===================== IK SOLVER =====================
 
 function solveChains() {
+  if (!activeChain) return;
 
-  chains.forEach(c => {
+  const c = activeChain;
 
-    if (c.bones.length === 1) {
-      solveSingle(c);
-      return;
-    }
+  if (c.bones.length === 1) {
+    solveSingle(c);
+    return;
+  }
 
-    const curl = c.target.position.y - originalPositions[c.target.userData.name].y;
-    let angle = THREE.MathUtils.clamp(-curl * 3, -c.limits.HARD, c.limits.HARD);
+  const origin = originalPositions[c.target.userData.name];
+  if (!origin) return;
 
-    triggerCheck(c, angle);
+  const delta = c.target.position.clone().sub(origin);
 
-    c.bones.forEach((b, i) => {
-      b.rotation[c.axis] = angle * (i === 0 ? 0.4 : i === 1 ? 0.35 : 0.25);
-    });
+// 用「向下 + 向前」共同驱动弯曲
+const curl =
+  delta.y * 1.2 +
+  delta.z * 2.2;
+
+
+  let angle = -curl * 10;
+
+  // ⭐ 人体「正常极限」
+  const softLimit = c.limits.SOFT;
+  const crackLimit = c.limits.CRACK;
+  const hardLimit = c.limits.HARD;
+
+  angle = THREE.MathUtils.clamp(angle, -hardLimit, hardLimit);
+
+  triggerCheck(c, angle);
+
+  c.bones.forEach((b, i) => {
+    b.rotation[c.axis] =
+      angle * (i === 0 ? 0.4 : i === 1 ? 0.35 : 0.25);
   });
 }
+
 
 function solveSingle(c) {
 
@@ -373,28 +427,44 @@ function solveSingle(c) {
   // 用 target 偏移量直接驱动角度（关键）
   const offset = c.target.position.clone().sub(origin);
 
-  let angle = 0;
+let input = dragAccumX * 0.1;
 
-  if (c.axis === 'z') {
-    // 脖子：左右歪头（拖左右）
-    angle = THREE.MathUtils.clamp(
-      -offset.x * 2.5,
-      -c.limits.HARD,
-      c.limits.HARD
-    );
+if (c.type === 'neck') {
+  input = -dragAccumX * 0.1;   // 脖子：反向 + 降低灵敏度
+}
+
+if (c.type === 'waist') {
+  input = dragAccumX * 0.08;    // 腰：同向，稍微慢一点
+}
+
+let angle = 0;
+
+if (Math.abs(input) < c.limits.SOFT) {
+  c.state = 'soft';
+  angle = input;
+}
+
+else if (Math.abs(input) < c.limits.CRACK) {
+  c.state = 'hard';
+
+  angle = THREE.MathUtils.lerp(
+    c.prevAngle,
+    Math.sign(input) * c.limits.SOFT,
+    0.15
+  );
+}
+
+else {
+  if (c.state !== 'snapped') {
+    triggerCheck(c, c.limits.HARD);
+    c.state = 'snapped';
   }
 
-  if (c.axis === 'y') {
-    // 腰：左右扭腰（拖左右）
-    angle = THREE.MathUtils.clamp(
-      offset.x * 2.0,
-      -c.limits.HARD,
-      c.limits.HARD
-    );
-  }
+  angle = Math.sign(input) * c.limits.HARD;
+}
 
-  // crack 检测
-  triggerCheck(c, angle);
+c.prevAngle = angle;
+
 
   // 平滑回正 / 跟随
   bone.rotation[c.axis] = THREE.MathUtils.lerp(
@@ -413,7 +483,7 @@ function triggerCheck(chain, angle) {
   const now = Date.now();
   if (!chain.cracked && Math.abs(angle) > chain.limits.CRACK) {
 
-    if (now - chain.lastCrack > 900 && crackBuffers.length) {
+    if (crackBuffers.length) {
       chain.lastCrack = now;
       chain.cracked = true;
 
@@ -459,23 +529,19 @@ window.addEventListener('pointerdown', e => {
 
   selectedTarget = hit.object;
   dragging = true;
+  activeChain = chains.find(c => c.target === selectedTarget);
+
   selectedTarget.material.color.setHex(0xffff00);
+
+  dragStartY = e.clientY;
+  dragStartX = e.clientX;
+  dragAccumX = 0;
+  dragAccumY = 0;
+
 
   camera.getWorldDirection(dragPlane.normal);
   dragPlane.constant = -selectedTarget.position.dot(dragPlane.normal);
 });
-
-
-// function animateCamera(toPos, toLookAt, duration = 0.6) {
-//   camAnim = {
-//     fromPos: camera.position.clone(),
-//     toPos: toPos.clone(),
-//     fromLook: getCameraLookAt(),
-//     toLook: toLookAt.clone(),
-//     t: 0,
-//     dur: duration
-//   };
-// }
 
 function getCameraLookAt() {
   const dir = new THREE.Vector3();
@@ -485,6 +551,13 @@ function getCameraLookAt() {
 
 
 window.addEventListener('pointermove', e => {
+
+    if (!dragging) return;
+
+    // === screen-space drag ===
+    dragAccumY = (dragStartY - e.clientY) * 0.01;
+    dragAccumX = (e.clientX - dragStartX) * 0.01;
+
   if (!dragging || !selectedTarget) return;
 
   setMouse(e);
@@ -503,6 +576,8 @@ window.addEventListener('pointerup', () => {
   }
   selectedTarget = null;
   dragging = false;
+  activeChain = null;
+
 });
 
 
@@ -541,6 +616,26 @@ function animate() {
 
 
   solveChains();
+
+  chains.forEach(c => {
+  if (dragging) return;
+
+  const speed = c.state === 'snapped' ? 0.05 : 0.2;
+
+  c.bones.forEach(b => {
+    b.rotation[c.axis] = THREE.MathUtils.lerp(
+      b.rotation[c.axis],
+      0,
+      speed
+    );
+  });
+
+  if (Math.abs(c.prevAngle) < 0.01) {
+    c.state = 'soft';
+    c.prevAngle = 0;
+  }
+});
+
 
 // === keep control targets visually small ===
 controlTargets.forEach(t => {
@@ -591,3 +686,8 @@ window.addEventListener('resize', () => {
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') enterOverview();
 });
+
+backBtn.addEventListener('click', () => {
+  enterOverview();
+});
+
