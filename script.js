@@ -48,7 +48,7 @@ const crackSound = new THREE.Audio(listener);
 const audioLoader = new THREE.AudioLoader();
 const crackBuffers = [];
 
-['assets/crack_1.mp3', 'assets/crack_2.mp3', 'assets/crack_3.mp3', 'assets/crack_4.mp3']
+['assets/crack_1.mp3', 'assets/crack_2.mp3', 'assets/crack_3.mp3', 'assets/crack_4.mp3', 'assets/crack_5.mp3', 'assets/crack_6.mp3', 'assets/crack_7.mp3', 'assets/crack_8.mp3', 'assets/crack_10.mp3']
   .forEach(f => {
     audioLoader.load(f, b => crackBuffers.push(b));
   });
@@ -238,7 +238,6 @@ function initFingers() {
       limits: LIMIT_PRESETS.finger,
       target,
       cracked: false,
-      lastCrack: 0,
       state: 'soft',      // 'soft' | 'hard' | 'snapped'
       prevAngle: 0
     });
@@ -285,7 +284,6 @@ function initSpine() {
       limits,
       target,
       cracked: false,
-      lastCrack: 0,
       state: 'soft',      // 'soft' | 'hard' | 'snapped'
       prevAngle: 0
     });
@@ -384,38 +382,91 @@ function solveChains() {
 
   const c = activeChain;
 
+  // ===== 颈部 / 腰部 =====
   if (c.bones.length === 1) {
     solveSingle(c);
     return;
   }
 
+  // ===== 手指 =====
   const origin = originalPositions[c.target.userData.name];
   if (!origin) return;
 
-  const delta = c.target.position.clone().sub(origin);
+  // 👉 用 screen-space 拖动作为主输入（比世界坐标稳定）
+  // 正值 = 朝手心，负值 = 朝手背
+  const input = -dragAccumY * 1 // ⭐ 灵敏度在这里调（1.4–2.0 都合理）
+  const absInput = Math.abs(input);
 
-// 用「向下 + 向前」共同驱动弯曲
-const curl =
-  delta.y * 1.2 +
-  delta.z * 2.2;
+  const isPalmSide = input > 0;   // 朝手心
+  const isBackSide = input < 0;   // 朝手背
+
+  // ===============================
+  // ⭐ 方向感知的人体极限（核心）
+  // ===============================
+
+  const softLimit  = isPalmSide
+    ? c.limits.SOFT * 1.25   // 手心：正常活动很大
+    : c.limits.SOFT * 0.55;  // 手背：正常活动很小
+
+  const crackLimit = isPalmSide
+    ? c.limits.CRACK * 1.35  // 手心：需要掰很大才咔
+    : c.limits.CRACK * 1.35; // 手背：很小就咔
+
+  const hardLimit  = isPalmSide
+    ? c.limits.HARD * 1.15
+    : c.limits.HARD * 0.65;
+
+  // ===============================
+  // ⭐ 卡顿 → SNAP 状态机
+  // ===============================
+
+  let angle = 0;
+
+  if (absInput < softLimit) {
+    // 正常活动区
+    c.state = 'soft';
+    angle = input;
+  }
+
+  else if (absInput < crackLimit) {
+    // 卡住区（明显阻尼）
+    c.state = 'hard';
+
+    angle = THREE.MathUtils.lerp(
+      c.prevAngle,
+      Math.sign(input) * softLimit,
+      0.10 // ⭐ 越小越“卡”
+    );
+  }
+
+else {
+  if (c.state !== 'snapped') {
+    triggerCrackSound();
+  }
+
+  c.state = 'snapped';
+  angle = Math.sign(input) * hardLimit;
+}
 
 
-  let angle = -curl * 10;
 
-  // ⭐ 人体「正常极限」
-  const softLimit = c.limits.SOFT;
-  const crackLimit = c.limits.CRACK;
-  const hardLimit = c.limits.HARD;
+  c.prevAngle = angle;
 
-  angle = THREE.MathUtils.clamp(angle, -hardLimit, hardLimit);
-
-  triggerCheck(c, angle);
+  // ===============================
+  // ⭐ 分段弯曲（更真实）
+  // ===============================
 
   c.bones.forEach((b, i) => {
-    b.rotation[c.axis] =
-      angle * (i === 0 ? 0.4 : i === 1 ? 0.35 : 0.25);
+    const weight =
+      i === 0 ? 0.45 :
+      i === 1 ? 0.35 :
+               0.20;
+
+    b.rotation[c.axis] = angle * weight;
   });
 }
+
+
 
 
 function solveSingle(c) {
@@ -456,12 +507,14 @@ else if (Math.abs(input) < c.limits.CRACK) {
 
 else {
   if (c.state !== 'snapped') {
-    triggerCheck(c, c.limits.HARD);
-    c.state = 'snapped';
+    triggerCrackSound();
   }
 
+  c.state = 'snapped';
   angle = Math.sign(input) * c.limits.HARD;
 }
+
+
 
 c.prevAngle = angle;
 
@@ -478,28 +531,20 @@ c.prevAngle = angle;
 
 // ===================== CRACK =====================
 
-function triggerCheck(chain, angle) {
+function triggerCrackSound() {
+  if (!crackBuffers.length) return;
 
-  const now = Date.now();
-  if (!chain.cracked && Math.abs(angle) > chain.limits.CRACK) {
-
-    if (crackBuffers.length) {
-      chain.lastCrack = now;
-      chain.cracked = true;
-
-      crackSound.stop();
-      crackSound.setBuffer(
-        crackBuffers[Math.floor(Math.random() * crackBuffers.length)]
-      );
-      crackSound.setVolume(1);
-      crackSound.play();
-    }
-  }
-
-  if (Math.abs(angle) < chain.limits.SOFT) {
-    chain.cracked = false;
-  }
+  crackSound.stop();
+  crackSound.setBuffer(
+    crackBuffers[Math.floor(Math.random() * crackBuffers.length)]
+  );
+  crackSound.setVolume(1);
+  crackSound.play();
 }
+
+
+
+
 
 // ===================== INTERACTION =====================
 
@@ -644,7 +689,7 @@ controlTargets.forEach(t => {
   const dist = camera.position.distanceTo(t.position);
 
   // 这个 0.04 可以调：越小越精细
-  const s = dist * 0.1;
+  const s = dist * 0.4;
 
   t.scale.setScalar(s);
 });
