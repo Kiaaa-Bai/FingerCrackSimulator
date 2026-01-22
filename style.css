@@ -3,7 +3,7 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden; /* ⛔ 禁止滚动 */
+  overflow: hidden; /* ⛔ Disable scrolling */
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #111;
 }
@@ -19,7 +19,7 @@ canvas {
 #ui-overlay {
   position: fixed;
   inset: 0;
-  pointer-events: none; /* 默认不挡 3D */
+  pointer-events: none; /* Do not block 3D by default */
   z-index: 10;
 }
 
@@ -42,8 +42,8 @@ canvas {
 #pop-layer {
   position: fixed;
   inset: 0;
-  pointer-events: none; /* 不挡鼠标 */
-  z-index: 15; /* 高于 three.js 画面 */
+  pointer-events: none; /* Do not block the mouse */
+  z-index: 15; /* Above the three.js view */
   overflow: visible;
   font-family: "Impact", "Anton", "Archivo Black", system-ui, sans-serif;
 }
@@ -79,7 +79,7 @@ canvas {
   }
 }
 
-/* 左上角信息 */
+/* Top-left info */
 .ui-top-left {
   position: absolute;
   top: 24px;
@@ -121,7 +121,7 @@ canvas {
   color: #9fef9f;
 }
 
-/* 右上角上下文 UI */
+/* Top-right contextual UI */
 .ui-top-right {
   position: absolute;
   top: 24px;
@@ -132,7 +132,7 @@ canvas {
   padding: 14px 18px;
   border-radius: 12px;
   text-align: right;
-  pointer-events: auto; /* 👈 按钮可点 */
+  pointer-events: auto; /* 👈 Button is clickable */
 }
 
 .mode-label {
@@ -166,7 +166,7 @@ canvas {
 
 .hint-small {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.78); /* 提亮 */
+  color: rgba(255, 255, 255, 0.78); /* Brighten */
   line-height: 1.4;
 }
 

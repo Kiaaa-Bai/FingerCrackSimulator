@@ -226,7 +226,7 @@ function initFingers() {
 
     tip.getWorldPosition(target.position);
 
-    // 向手指局部法线方向微偏移（而不是世界 Y）
+    // Slightly offset along the finger's local normal (not world Y)
     const offset = new THREE.Vector3(0, 0.025, 0);
     offset.applyQuaternion(
         tip.getWorldQuaternion(new THREE.Quaternion())
@@ -302,9 +302,9 @@ function initSpine() {
 function initSelectors() {
   // 3 balls shown in overview, click only
   const defs = [
-    { mode: 'hand',  bone: 'mixamorig1RightHand', offset: new THREE.Vector3(0.25, 0.15, 0) },
-    { mode: 'neck',  bone: 'mixamorig1Neck',      offset: new THREE.Vector3(0, 0.25, 0) },
-    { mode: 'waist', bone: 'mixamorig1Spine2',    offset: new THREE.Vector3(0, 0.25, 0) }
+    { mode: 'hand',  bone: 'mixamorig1RightHand', offset: new THREE.Vector3(-0.2, 0, 0) },
+    { mode: 'neck',  bone: 'mixamorig1Neck',      offset: new THREE.Vector3(0, 0.1, 0) },
+    { mode: 'waist', bone: 'mixamorig1Spine2',    offset: new THREE.Vector3(0, -0.25, 0) }
   ];
 
   defs.forEach(d => {
@@ -363,7 +363,7 @@ function enterDetail(mode) {
 function createTarget(name, kind) {
 
   const radius = (kind === 'selector') ? 0.1 : 0.07;
-  // selector 大，control 小
+  // selector large, control small
 
   const geo = new THREE.SphereGeometry(radius, 16, 16);
   const mat = new THREE.MeshBasicMaterial({
@@ -390,60 +390,60 @@ function solveChains() {
 
   const c = activeChain;
 
-  // ===== 颈部 / 腰部 =====
+  // ===== Neck / Waist =====
   if (c.bones.length === 1) {
     solveSingle(c);
     return;
   }
 
-  // ===== 手指 =====
+  // ===== Fingers =====
   const origin = originalPositions[c.target.userData.name];
   if (!origin) return;
 
-  // 👉 用 screen-space 拖动作为主输入（比世界坐标稳定）
-  // 正值 = 朝手心，负值 = 朝手背
-  const input = -dragAccumY * 1 // ⭐ 灵敏度在这里调（1.4–2.0 都合理）
+  // 👉 Use screen-space drag as the main input (more stable than world coordinates)
+  // Positive = toward the palm, negative = toward the back of the hand
+  const input = -dragAccumY * 1 // ⭐ Adjust sensitivity here (1.4–2.0 works)
   const absInput = Math.abs(input);
 
-  const isPalmSide = input > 0;   // 朝手心
-  const isBackSide = input < 0;   // 朝手背
+  const isPalmSide = input > 0;   // Toward the palm
+  const isBackSide = input < 0;   // Toward the back of the hand
 
   // ===============================
-  // ⭐ 方向感知的人体极限（核心）
+  // ⭐ Direction-aware human limits (core)
   // ===============================
 
   const softLimit  = isPalmSide
-    ? c.limits.SOFT * 1.25   // 手心：正常活动很大
-    : c.limits.SOFT * 0.55;  // 手背：正常活动很小
+    ? c.limits.SOFT * 1.25   // Palm side: large normal range
+    : c.limits.SOFT * 0.55;  // Back side: small normal range
 
   const crackLimit = isPalmSide
-    ? c.limits.CRACK * 1.35  // 手心：需要掰很大才咔
-    : c.limits.CRACK * 1.35; // 手背：很小就咔
+    ? c.limits.CRACK * 1.35  // Palm side: needs a big bend to crack
+    : c.limits.CRACK * 1.35; // Back side: cracks with a small bend
 
   const hardLimit  = isPalmSide
     ? c.limits.HARD * 1.15
     : c.limits.HARD * 0.65;
 
   // ===============================
-  // ⭐ 卡顿 → SNAP 状态机
+  // ⭐ Stiction → SNAP state machine
   // ===============================
 
   let angle = 0;
 
   if (absInput < softLimit) {
-    // 正常活动区
+    // Normal motion zone
     c.state = 'soft';
     angle = input;
   }
 
   else if (absInput < crackLimit) {
-    // 卡住区（明显阻尼）
+    // Stuck zone (heavy damping)
     c.state = 'hard';
 
     angle = THREE.MathUtils.lerp(
       c.prevAngle,
       Math.sign(input) * softLimit,
-      0.10 // ⭐ 越小越“卡”
+      0.10 // ⭐ Smaller value feels more "stuck"
     );
   }
 
@@ -465,7 +465,7 @@ else {
   c.prevAngle = angle;
 
   // ===============================
-  // ⭐ 分段弯曲（更真实）
+  // ⭐ Segmented bend (more realistic)
   // ===============================
 
   c.bones.forEach((b, i) => {
@@ -487,17 +487,17 @@ function solveSingle(c) {
   const origin = originalPositions[c.target.userData.name];
   if (!origin) return;
 
-  // 用 target 偏移量直接驱动角度（关键）
+  // Drive angle directly from the target offset (key)
   const offset = c.target.position.clone().sub(origin);
 
 let input = dragAccumX * 0.1;
 
 if (c.type === 'neck') {
-  input = -dragAccumX * 0.1;   // 脖子：反向 + 降低灵敏度
+  input = -dragAccumX * 0.1;   // Neck: reversed + reduced sensitivity
 }
 
 if (c.type === 'waist') {
-  input = dragAccumX * 0.08;    // 腰：同向，稍微慢一点
+  input = dragAccumX * 0.08;    // Waist: same direction, slightly slower
 }
 
 let angle = 0;
@@ -535,7 +535,7 @@ else {
 c.prevAngle = angle;
 
 
-  // 平滑回正 / 跟随
+  // Smooth return/follow
   bone.rotation[c.axis] = THREE.MathUtils.lerp(
     bone.rotation[c.axis],
     angle,
@@ -741,7 +741,7 @@ controlTargets.forEach(t => {
 
   const dist = camera.position.distanceTo(t.position);
 
-  // 这个 0.04 可以调：越小越精细
+  // This 0.04 is adjustable: smaller = finer
   const s = dist * 0.4;
 
   t.scale.setScalar(s);
@@ -751,7 +751,7 @@ if (camTransition) {
   camTransition.t += 1 / 60;
   const a = Math.min(camTransition.t / camTransition.dur, 1);
 
-  // smoothstep（非常重要，比 linear 好很多）
+  // smoothstep (very important, much better than linear)
   const k = a * a * (3 - 2 * a);
 
   camera.position.lerpVectors(
