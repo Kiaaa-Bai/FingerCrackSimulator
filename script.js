@@ -11,6 +11,17 @@ const popLayer = document.getElementById('pop-layer');
 const overviewHintEl = document.getElementById('overview-hint');
 const detailHintEl = document.getElementById('detail-hint');
 
+// Basic mobile detection: coarse pointer or mobile UA
+const isMobile = window.matchMedia('(pointer: coarse)').matches || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+// Per-platform drag sensitivity (screen-space → world)
+const DRAG_SENSITIVITY = {
+  desktop: 0.01,
+  mobile: 0.1 // same as desktop for now; tweak later
+};
+
+const dragScale = isMobile ? DRAG_SENSITIVITY.mobile : DRAG_SENSITIVITY.desktop;
+
 const MODE_HINTS = {
   hand:  'Gently drag a fingertip to simulate joint cracking.',
   neck:  'Drag sideways to bend the neck.',
@@ -93,7 +104,8 @@ let viewState = 'overview'; // 'overview' | 'hand' | 'neck' | 'waist'
 const selectorTargets = []; // 3 balls in overview (click only)
 const controlTargets = [];  // balls in detail (drag only)
 
-const CAMERA_PRESETS = {
+// Desktop camera presets
+const CAMERA_PRESETS_DESKTOP = {
   overview: {
     pos: new THREE.Vector3(0.100, 1.2, 1.896),
     rot: new THREE.Euler(-0.105, 0.000, 0.000)
@@ -114,6 +126,31 @@ const CAMERA_PRESETS = {
     rot: new THREE.Euler(-0.089, -0.030, 0.000)
   }
 };
+
+// Mobile presets (currently same as desktop; adjust later)
+const CAMERA_PRESETS_MOBILE = {
+  overview: {
+    pos: new THREE.Vector3(0, 1.2, 4),
+    rot: new THREE.Euler(-0.105, 0.000, 0.000)
+  },
+
+  hand: {
+    pos: new THREE.Vector3(-0.773, 1.2, 0.3),
+    rot: new THREE.Euler(0.616, 0.135, 0.000)
+  },
+
+  neck: {
+    pos: new THREE.Vector3(-0.004, 1.590, 0.5),
+    rot: new THREE.Euler(-0.089, -0.030, 0.000)
+  },
+
+  waist: {
+    pos: new THREE.Vector3(-0.031, 1.5, 1),
+    rot: new THREE.Euler(-0.089, -0.030, 0.000)
+  }
+};
+
+const CAMERA_PRESETS = isMobile ? CAMERA_PRESETS_MOBILE : CAMERA_PRESETS_DESKTOP;
 
 function applyCameraPreset(mode, duration = 0.4) {
   const preset = CAMERA_PRESETS[mode];
@@ -616,8 +653,8 @@ window.addEventListener('pointermove', e => {
     if (!dragging) return;
 
     // === screen-space drag ===
-    dragAccumY = (dragStartY - e.clientY) * 0.01;
-    dragAccumX = (e.clientX - dragStartX) * 0.01;
+    dragAccumY = (dragStartY - e.clientY) * dragScale;
+    dragAccumX = (e.clientX - dragStartX) * dragScale;
 
   if (!dragging || !selectedTarget) return;
 
